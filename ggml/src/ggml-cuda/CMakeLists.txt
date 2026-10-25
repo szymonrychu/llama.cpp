@@ -262,6 +262,15 @@ if (CUDAToolkit_FOUND)
         list(APPEND CUDA_FLAGS -Xcompiler ${CUDA_CXX_FLAGS_JOINED})
     endif()
 
+    if (CMAKE_CUDA_COMPILER_ID STREQUAL "Clang")
+        # clang as CUDA compiler (lets CUDA 10.2 on the Jetson Nano build C++17 kernels): no nvcc-only flags
+        set(CUDA_FLAGS -fcuda-flush-denormals-to-zero -fcuda-approx-transcendentals -Wno-pedantic -Wno-unknown-cuda-version)
+        if (CMAKE_CUDA_ARCHITECTURES STREQUAL "53")
+            # sm_53 allows 32K registers per block: cap kernels without __launch_bounds__ so 1024-thread launches fit
+            list(APPEND CUDA_FLAGS -Xcuda-ptxas --maxrregcount=32)
+        endif()
+    endif()
+
     target_compile_options(ggml-cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_FLAGS}>")
 else()
     message(FATAL_ERROR "CUDA Toolkit not found")

@@ -3,8 +3,12 @@
 #include <cuda_runtime.h>
 #include <cuda.h>
 #include <cublas_v2.h>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#if CUDART_VERSION >= 11000
+#include <cuda_bf16.h>
+#else
+#include "cuda10-bf16.h" // CUDA 10.2 (Jetson Nano) has no cuda_bf16.h
+#endif // CUDART_VERSION >= 11000
 
 #ifdef GGML_USE_NCCL
 #include <nccl.h>
@@ -26,3 +30,12 @@
 #define CUBLAS_COMPUTE_32F CUDA_R_32F
 #define cublasComputeType_t cudaDataType_t
 #endif // CUDART_VERSION < 11020
+
+#if CUDART_VERSION < 11000
+// CUDA 10.2 (Jetson Nano, JetPack 4): API defaults added in CUDA 11.
+static inline cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event) {
+    return cudaStreamWaitEvent(stream, event, 0);
+}
+// cuBLAS 10.2 on Maxwell (no tensor cores) fails some fp16 GemmEx calls with the TENSOR_OP algo.
+#define CUBLAS_GEMM_DEFAULT_TENSOR_OP CUBLAS_GEMM_DEFAULT
+#endif // CUDART_VERSION < 11000

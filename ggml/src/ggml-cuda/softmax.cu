@@ -6,7 +6,9 @@
 #include <hip/hip_cooperative_groups.h>
 #else
 #include <cooperative_groups.h>
+#if CUDART_VERSION >= 11000
 #include <cooperative_groups/reduce.h>
+#endif
 #endif // GGML_USE_HIP
 
 #include <cstdint>
@@ -150,6 +152,11 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
                                                                 float * shared_vals_max,
                                                                 float * shared_vals_sum,
                                                                 const soft_max_params p) {
+#if CUDART_VERSION < 11000
+    // CUDA 10 grid_group needs -rdc; cooperative launch is runtime-gated and absent on sm_5x anyway.
+    GGML_UNUSED_VARS(x, dst, tmp_maxs, tmp_sums, shared_vals_max, shared_vals_sum, p);
+    NO_DEVICE_CODE;
+#else
     namespace cg = cooperative_groups;
 
     const cg::grid_group g = cg::this_grid();
@@ -247,6 +254,7 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
         }
         col += step_size * n_elem_per_thread;
     }
+#endif // CUDART_VERSION < 11000
 }
 
 #ifdef __clang__
