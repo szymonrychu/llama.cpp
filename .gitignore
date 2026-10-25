@@ -153,3 +153,10 @@ a.out.*
 
 AGENTS.local.md
 .pi/SYSTEM.md
+
+# Jetson Nano build (scripts/jetson-nano)
+/build-jetson-nano/
+/cuda-10.2-sysroot/
+/debs/
+/.tmp/
+/.ccache/
