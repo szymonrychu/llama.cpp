@@ -1,0 +1,3 @@
+# /etc/default/nano-clocks - clocks applied at boot after jetson_clocks (stock MAXN: 1479000 / 921600000)
+CPU_KHZ=1479000
+GPU_HZ=921600000

@@ -1,0 +1,125 @@
+--- a/kernel/kernel-4.9/drivers/soc/tegra/tegra210-dvfs.c
++++ b/kernel/kernel-4.9/drivers/soc/tegra/tegra210-dvfs.c
+@@ -331,6 +331,11 @@
+ 		{1479000000UL,	{  2519460,  -105063,     1611 } }, \
+ 		{1555500000UL,	{  2639809,  -108729,     1626 } }, \
+ 		{1683000000UL,	{  2889664,  -122173,     1834 } }, \
++		{1734000000UL,	{  3386160,  -154021,     2393 } }, \
++		{1836000000UL,	{  5100873,  -279186,     4747 } }, \
++		{1912500000UL,	{  5100873,  -279186,     4747 } }, \
++		{2014500000UL,	{  5100873,  -279186,     4747 } }, \
++		{2218500000UL,	{  5100873,  -279186,     4747 } }, \
+ 		{0,           	{ } }, \
+ 	}
+ 
+@@ -399,14 +404,14 @@
+ 		.speedo_id = 9,
+ 		.process_id = 0,
+ 		.min_mv = 900,
+-		.max_mv = 1162,
++		.max_mv = 1300,
+ 		CPU_PLL_CVB_TABLE_EUCM2,
+ 	},
+ 	{
+ 		.speedo_id = 9,
+ 		.process_id = 1,
+ 		.min_mv = 900,
+-		.max_mv = 1162,
++		.max_mv = 1300,
+ 		CPU_PLL_CVB_TABLE_EUCM2,
+ 	},
+ 	{
+@@ -685,6 +690,10 @@
+ 		{  844800, { }, {  1233208,     8144,     -940,      808,   -21583,      226 }, }, \
+ 		{  921600, { }, {  1275100,     8144,     -940,      808,   -21583,      226 }, }, \
+ 		{  998400, { }, {  1316991,     8144,     -940,      808,   -21583,      226 }, }, \
++                { 1075200, { }, {  1358882,     8144,     -940,      808,   -21583,      226 }, }, \
++                { 1152000, { }, {  1400774,     8144,     -940,      808,   -21583,      226 }, }, \
++                { 1228800, { }, {  1442665,     8144,     -940,      808,   -21583,      226 }, }, \
++                { 1305600, { }, {  1484556,     8144,     -940,      808,   -21583,      226 }, }, \
+ 		{ 0,	   { }, { }, }, \
+ 	}
+ 
+@@ -768,8 +777,8 @@
+ 		.speedo_id = 2,
+ 		.process_id = -1,
+ 		.pll_min_millivolts = 818,
+-		.max_mv = 1150,
+-		.max_freq = 998400,
++		.max_mv = 1300,
++		.max_freq = 1305600,
+ #ifdef CONFIG_TEGRA_USE_NA_GPCPLL
+ 		NA_FREQ_CVB_TABLE,
+ #else
+@@ -2029,10 +2038,7 @@
+ 	for (ret = 0, i = 0; i < table_size; i++) {
+ 		struct cvb_dvfs *d = &cvb_dvfs_table[i];
+ 		unsigned long max_freq = d->max_freq;
+-		u32 f;
+ 
+-		if (!of_property_read_u32(node, "nvidia,gpu-max-freq-khz", &f))
+-			max_freq = min(max_freq, (unsigned long)f);
+ 
+ 		if (match_dvfs_one("gpu cvb", d->speedo_id, d->process_id,
+ 				   gpu_speedo_id, gpu_process_id)) {
+--- a/kernel/kernel-4.9/drivers/clk/tegra/clk-tegra124-dfll-fcpu.c
++++ b/kernel/kernel-4.9/drivers/clk/tegra/clk-tegra124-dfll-fcpu.c
+@@ -105,7 +105,7 @@
+ 	[6] = 2014500000UL,
+ 	[7] = 1734000000UL,
+ 	[8] = 1683000000UL,
+-	[9] = 1555500000UL,
++	[9] = 2218500000UL,
+ 	[10] = 1504500000UL,
+ };
+ 
+@@ -201,6 +201,11 @@
+ 		{1479000000UL,	{1090000, 0, 0} }, \
+ 		{1555500000UL,	{1162000, 0, 0} }, \
+ 		{1683000000UL,	{1195000, 0, 0} }, \
++		{1734000000UL,	{1195000, 0, 0} }, \
++		{1836000000UL,	{1195000, 0, 0} }, \
++		{1912500000UL,	{1227500, 0, 0} }, \
++		{2014500000UL,	{1227500, 0, 0} }, \
++		{2218500000UL,	{1296500, 0, 0} }, \
+ 		{0,           	{      0, 0, 0} }, \
+ 	}
+ 
+@@ -279,7 +284,7 @@
+ 		.speedo_id = 9,
+ 		.process_id = 0,
+ 		.min_millivolts = 900,
+-		.max_millivolts = 1162,
++		.max_millivolts = 1300,
+ 		CPU_CVB_TABLE_EUCM2,
+ 		.cpu_dfll_data = {
+ 			.tune0_low = 0xffead0ff,
+@@ -291,7 +296,7 @@
+ 		.speedo_id = 9,
+ 		.process_id = 1,
+ 		.min_millivolts = 900,
+-		.max_millivolts = 1162,
++		.max_millivolts = 1300,
+ 		CPU_CVB_TABLE_EUCM2,
+ 		.cpu_dfll_data = {
+ 			.tune0_low = 0xffead0ff,
+@@ -805,7 +810,6 @@
+ 	struct rail_alignment align;
+ 	const struct thermal_table *thermal;
+ 	unsigned long max_freq;
+-	u32 f;
+ 	bool ucm2;
+ 
+ 	of_id = of_match_device(tegra124_dfll_fcpu_of_match, &pdev->dev);
+@@ -822,10 +826,8 @@
+ 		return -ENODEV;
+ 	}
+ 	max_freq = fcpu_data->cpu_max_freq_table[speedo_id];
+-	if (!of_property_read_u32(pdev->dev.of_node, "nvidia,dfll-max-freq-khz",
+-				  &f))
+-		max_freq = min(max_freq, f * 1000UL);
+ 
++
+ 	soc = devm_kzalloc(&pdev->dev, sizeof(*soc), GFP_KERNEL);
+ 	if (!soc)
+ 		return -ENOMEM;

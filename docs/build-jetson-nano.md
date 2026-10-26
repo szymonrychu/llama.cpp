@@ -56,28 +56,52 @@ Every change is gated on one of three conditions, so other builds keep upstream 
 
 Generation is mostly Q4_K and Q6_K matrix-vector products. MMVQ relies on `__dp4a`, which sm_53 lacks. ggml emulates it with byte extracts and Maxwell's slow integer multiplies, and gets about 3 GB/s.
 
-The new kernel works with y in float:
-- **Dequantization:** a 4-bit value q is OR-ed into the mantissa of 1.0f, which gives exactly f = 1 + q/16. Then q·y = 16·(f·y − y), so each weight costs one shift, one LOP3 and one FMA.
-- **y correction:** a small pre-pass sums y over 16-element groups once per mat-vec. Each sub-block applies the `−16·y` and `dmin·m` terms once.
-- **Q4_K loads:** 8 lanes cover one 256-weight super-block. Each lane loads 16 bytes of `qs`, and one broadcast 16-byte load fetches d, dmin and all 12 scale bytes.
-- **Q6_K:** the same float trick on 6-bit values with 16-bit loads, because its blocks are 210 bytes.
-- **Row reuse:** each warp computes 4 rows from one load of y. The one-row-per-warp form was bound by y re-reads through L2/texture cache, not by DRAM or ALU. 8 rows per warp was slower because of register pressure.
+The new kernel avoids integer dot products entirely:
+- **Q4_K (fp16 path):** the Tegra X1 does native fp16 at twice the fp32 rate. A nibble OR-ed into bits 6..9 of
+  half-precision 1.0 is exactly 1 + q/16, so one shift and one LOP3 build two weights. `HSUB2` turns them into
+  q/16 (exact), and `HFMA2` multiplies both by y.
+- **y layout:** y is converted to half once per mat-vec, in groups of 4 stored as (y0, y2, y1, y3). Each half2 of
+  y then lines up with one weight pair.
+- **Accumulation:** 16 products are summed in half (|q/16 * y| <= |y|), then converted to float. That is about
+  2 instructions per weight; the fp32 version needed about 4.
+- **Corrections:** the `dmin*m` term comes from 16-element sums of y, computed once per mat-vec in the same
+  pre-pass.
+- **Q4_K loads:** 8 lanes cover one 256-weight super-block. Each lane loads 16 bytes of `qs`, and one broadcast
+  16-byte load gets d, dmin and all 12 scale bytes.
+- **Q6_K (fp32 path):** OR-ing a quant q into the mantissa of 2^23 and subtracting gives q exactly (one LOP3 and
+  one FADD). Loads are 16-bit because the blocks are 210 bytes.
+- **Rows per warp:** each warp computes 2 rows from one load of y.
+  - Measured with fp16 on Qwen3.5-4B: 1 row 3.78, **2 rows 4.58**, 4 rows 3.87, 8 rows 3.54 tokens/s.
+  - Fewer registers, and therefore higher occupancy, beat more reuse of y.
+- **Not kept:**
+  - A shared-memory y tile was slower.
+  - A 2-4 token variant (for speculative-decoding verification) lost to MMVQ, which reuses dequantized weights
+    across columns.
 
 It is used only for single-token, non-batched, contiguous Q4_K/Q6_K mat-vecs on cc 5.3. Everything else, including other GPUs without `__dp4a`, still goes through MMVQ.
 
 Test: `tests/test-backend-ops.cpp` gains MUL_MAT n=1 cases at real model shapes (m 2048/6273, k 2048/6144, Q4_K and Q6_K). The `MUL_MAT ... n=1` Q4_K/Q6_K set passes 28/28 on the Nano.
 
-## Measured (Jetson Nano 4 GB, MAXN, jetson_clocks, Qwen3-VL-2B-Instruct Q4_K_M, llama-bench, `-fa 0`)
+## Measured (Jetson Nano 4 GB, llama-bench, `-fa 1`)
+
+Qwen3-VL-2B-Instruct Q4_K_M, stock clocks (MAXN, jetson_clocks), fp32 version of the kernel:
 
 | Build | tg (tokens/s) | pp32 (tokens/s) | pp256 (tokens/s) |
 |---|---|---|---|
 | CUDA, fp16 gated off for cc 5.3 (upstream behaviour) | 2.81 | 18.1 | not run (pp512 hit the GPU watchdog) |
 | + fp16 on cc 5.3 | 2.81 | 23.0 | 78.6 |
-| + mmv-sm53 kernel | **5.04** | - | 81.3 |
+| + mmv-sm53 kernel (fp32) | **5.04** | - | 81.3 |
 
-The average Q4_K mat-vec call went from 1.31 ms (MMVQ) to 0.59 ms. The Q6_K output layer (151936x2048) went from 64 ms to 40 ms per
-token. The kernels now read about 6.5 GB/s of weights; a plain read probe on the same GPU reaches 23 GB/s.
-In llama-server with JSON-schema sampling, an image + short JSON answer takes 15-25 s (about 4 tokens/s), down from 25-40 s.
+Qwen3.5-4B (pure Q4_K, imatrix), board overclocked (see scripts/jetson-nano/board), `-ub 128`:
+
+| Mat-vec kernel | tg64 (tokens/s) |
+|---|---|
+| mmv-sm53 fp32, 4 rows per warp | 3.08 |
+| mmv-sm53 fp16, 4 rows per warp | 3.87 |
+| mmv-sm53 fp16, 2 rows per warp | **4.59** |
+
+The kernels still use only part of the 23 GB/s the GPU can read: issue slots are about 64% busy and
+occupancy about 30%.
 
 ## Known issues
 
@@ -86,3 +110,4 @@ In llama-server with JSON-schema sampling, an image + short JSON answer takes 15
   streams. Raise it before starting the server: `echo 60000 > /sys/kernel/debug/gpu.0/ch_wdt_timeout_ms`.
 - BF16 GGUFs compute through the float shim; use F16/Q8_0/K-quant files.
 - Only checked on this one board.
+- Board tuning (overclock kernel, VPR carveout, swap, pinned memory) is in scripts/jetson-nano/board/README.md.
