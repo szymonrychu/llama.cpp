@@ -11123,11 +11123,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_K, GGML_TYPE_F32, m, 2, 1024, { 1, 1 }, { 1, 1 }));
     }
 
-    // Single-token K-quant mat-vec at real model shapes (sm_53 float dequant path), odd row count for the tail block.
+    // 1-4 token K-quant mat-vec at real model shapes (sm_53 float dequant path), odd row count for the tail block.
     for (ggml_type type_a : {GGML_TYPE_Q4_K, GGML_TYPE_Q6_K}) {
         for (int64_t m : {2048, 6273}) {
             for (int64_t k : {2048, 6144}) {
-                test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, m, 1, k, {1, 1}, {1, 1}));
+                for (int64_t n : {1, 2, 3, 4}) {
+                    test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, m, n, k, {1, 1}, {1, 1}));
+                }
             }
         }
     }
